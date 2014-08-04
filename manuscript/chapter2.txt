@@ -1,0 +1,283 @@
+# Chapter 2
+
+=== Booleans as Values
+
+Let's begin by studying the simplest domain a student of software would know: Boolean algebra.
+First we will implement it as values, then examine how the same logic can be implemented as types.
+We will define a Boolean trait (loosely equivalent to an interface in Java) and True/False objects
+(loosely equivalent to a ... well, Java doesn't have these.
+Think of them as singletons for this discussion).
+
+[source,scala]
+----
+sealed trait BoolVal // <1>
+
+case object TrueVal extends BoolVal
+case object FalseVal extends BoolVal
+----
+<1> The `sealed` keyword guarantees that the only types which extend `BoolVal` are defined in the current file.
+
+We can easily see that we satisfy the first property of Boolean values we've come to expect in that there are only two values in existence.footnote:[More correctly, Boolean algebra is not limited to only two values, but it contains two unique values which satisfy some given properties. Just for the sake of this discussion, I am allowing a looser definition of the theory.]
+Because we're utilizing case objects, we also get the equality properties of Boolean algebra satisfied as the following http://scalatest.org/[ScalaTest] code demonstrates:
+
+[source,scala]
+----
+class BoolValSpecs extends WordSpec with ShouldMatchers {
+  "FalseVal" should {
+    "equal itself" in { FalseVal should equal (FalseVal) }
+    "not equal TrueVal" in { FalseVal should not equal (TrueVal) }
+  }
+
+  "TrueVal" should {
+    "equal itself" in { TrueVal should equal (TrueVal) }
+    "not equal FalseVal" in { TrueVal should not equal (FalseVal) }
+  }
+}
+----
+
+Now let’s update `BoolVal` to define the `or` binary operator and the `not` unary operator to make things a little more interesting.
+
+[source,scala]
+----
+sealed trait BoolVal {
+  def not:BoolVal
+  def or(that:BoolVal):BoolVal
+}
+----
+
+The implementations are straight-forward.
+I don’t mean to be overly tedious...
+I know my audience is good at value programming, but just bear with me.
+
+[source,scala]
+----
+case object TrueVal extends BoolVal {
+  override val not = FalseVal
+  override def or(that:BoolVal) = TrueVal
+}
+case object FalseVal extends BoolVal {
+  override val not = TrueVal
+  override def or(that:BoolVal) = that
+}
+----
+
+I’ll spare you the validation code as it is rather straight-forward.
+
+What I genuinely find interesting is that we can define everything else about Boolean/predicate logic from these two functions, hence we only need to update `BoolVal` for other properties.
+For this discussion, I will implement `and` and `imp` for ``implies''.
+
+[source,scala]
+----
+sealed trait BoolVal {
+  def not:BoolVal
+  def or(that:BoolVal):BoolVal
+  def and(that:BoolVal) = (this.not or that.not).not
+  def imp(that:BoolVal) = this.not or that
+}
+----
+
+Let's call our `BoolVal` ``done''.
+Now let's see if we can write this same logic into the type system.
+We'll go through the same incremental steps as with `BoolVal`.
+
+=== Booleans as Types
+
+Now in Java, one declares a new type by defining either an interface or a class.
+Analogously in Scala, we can define a trait or a class.
+So we shall define traits for our Boolean types.
+
+[source,scala]
+----
+sealed trait BoolType
+sealed trait TrueType extends BoolType
+sealed trait FalseType extends BoolType
+----
+
+The definition is basically the same as our value counterpart.
+The big difference of course is that we originally had an object which is an instantiated instance of the `BoolVal` type, but here we have fully-abstracted traits.
+Yet a simple pattern is preserved here, which is the notion of a parent `Bool_` thing and two (and only two thanks to the sealed keyword) child things.
+While both worlds have the same construct as a parent (a sealed trait), the children are very different.
+The value world has two instances of the parent type, and the type world has two sub-types of the parent type.
+Essentially we’re staying in the type axis of programming, rather than crossing over to the value axis to encode our logic.
+
+When we created our `TrueVal` and `FalseVal` case objects, we got equality (and hence inequality) for free.
+We also get equality for free with our types.
+For this, we utilize `implicitly` and the operator `=:=`.
+Here is our test code.
+
+[source,scala]
+----
+object BoolTypeSpecs {
+  implicitly[TrueType =:= TrueType]
+  implicitly[FalseType =:= FalseType]
+}
+----
+
+How do you test it?
+Simply run the compiler, of course!
+You'll certainly find there are no issues compiling this bit here.
+You can also try negative test cases.
+
+[source,scala]
+----
+object BoolTypeSpecs {
+  implicitly[TrueType =:= TrueType]
+  implicitly[FalseType =:= FalseType]
+  implicitly[TrueType =:= FalseType]
+  implicitly[FalseType =:= TrueType]
+}
+----
+
+This will of course fail to compile.
+
+[source,text]
+----
+[error] C:\Users\jbarnes\code\type-prog\src\test\scala\com\joescii\typed\BoolTypeSpecs.scala:6: Cannot prove that com.joescii.typed.TrueType =:= com.joescii.typed.FalseType.
+[error]   implicitly[TrueType =:= FalseType]
+[error]             ^
+[error] C:\Users\jbarnes\code\type-prog\src\test\scala\com\joescii\typed\BoolTypeSpecs.scala:7: Cannot prove that com.joescii.typed.FalseType =:= com.joescii.typed.TrueType.
+[error]   implicitly[FalseType =:= TrueType]
+[error]             ^
+[error] two errors found
+[error] (test:compile) Compilation failed
+----
+
+Although this is precisely what we expect to happen, we have a bit of a problem here.
+How can we keep this code as part of our test suite?
+The compilation fails, so we aren’t able to go on and run our specs for `BoolVal`.
+If you take a look at the http://www.scala-lang.org/api/current/scala/Predef$.html[scaladocs] for `Predef` where `=:=` comes from, you won't find the negation.
+Fortunately, there is already a solution to this problem in the macro-based https://github.com/milessabin/shapeless/blob/master/core/src/main/scala/shapeless/test/typechecking.scala#L30/[`illTyped`] from the notorious https://github.com/milessabin/shapeless/[Shapeless library].footnote:[The ScalaTest suite delivers similar functionality with the `typeCheck` matcher.  It evaluates at runtime which is arguably more convenient for developers, but I felt the compile-time evaluation of `illTyped` was more conducive to this discussion.]
+Let's add it to our code...
+
+[source,scala]
+----
+import shapeless.test.illTyped
+
+object BoolTypeSpecs {
+  implicitly[TrueType =:= TrueType]
+  implicitly[FalseType =:= FalseType]
+  illTyped("implicitly[TrueType =:= FalseType]")
+  illTyped("implicitly[FalseType =:= TrueType]")
+}
+----
+
+Our code compiles.
+But of course it does...
+It's just a string which supposedly contains something that makes the compiler break.
+We could do that all day.
+What is important is that the compiler breaks if the string is _good_!
+
+[source,scala]
+----
+object BoolTypeSpecs {
+  illTyped("implicitly[TrueType =:= TrueType]")
+  illTyped("implicitly[FalseType =:= FalseType]")
+  illTyped("implicitly[TrueType =:= FalseType]")
+  illTyped("implicitly[FalseType =:= TrueType]")
+}
+----
+
+When the above is compiled, we get errors.
+
+[source,text]
+----
+[error] C:\Users\jbarnes\code\type-prog\src\test\scala\com\joescii\typed\BoolTypeSpecs.scala:6: Type-checking succeeded unexpectedly.
+[error] Expected some error.
+[error]   illTyped("implicitly[TrueType =:= TrueType]")
+[error]           ^
+[error] C:\Users\jbarnes\code\type-prog\src\test\scala\com\joescii\typed\BoolTypeSpecs.scala:7: Type-checking succeeded unexpectedly.
+[error] Expected some error.
+[error]   illTyped("implicitly[FalseType =:= FalseType]")
+[error]           ^
+[error] two errors found
+----
+
+Now we are well-equipped to test type equivalence for both positive and negative cases.
+I know that was a lot of work to just establish equality/inequality and I hope you’re still with me.
+Let's move along and define some of our operators from earlier.
+We'll start start making things interesting and define the `Not` type.
+
+[source,scala]
+----
+sealed trait BoolType {
+  type Not <: BoolType
+}
+sealed trait TrueType extends BoolType {
+  type Not = FalseType
+}
+sealed trait FalseType extends BoolType {
+  type Not = TrueType
+}
+----
+
+So here we have strong analogies to the value world.
+I bet one of you could do write a regex to convert the previous code from value-level programming to type-level programming.
+Rather than `def` we have `type`.
+Rather than colon `:` to separate the name from the type declaration, we have `<:`.
+Then in order to follow conventions, we capitalized `Not`.
+Now for the test code.
+
+[source,scala]
+----
+object BoolTypeSpecs {
+  // ...
+  implicitly[TrueType#Not =:= FalseType]
+  implicitly[FalseType#Not =:= TrueType]
+  illTyped("implicitly[TrueType#Not =:= TrueType]")
+  illTyped("implicitly[FalseType#Not =:= FalseType]")
+}
+----
+
+Again everything is analogous to value programming.
+The only notable difference is we use a hash to navigate the name space rather than period.
+Thus far I hope you feel pretty good about type programming given what we know about value programming.
+Now let's define `Or`.
+
+[source,scala]
+----
+sealed trait BoolType {
+  type Not <: BoolType
+  type Or[That <: BoolType] <: BoolType
+}
+sealed trait TrueType extends BoolType {
+  override type Not = FalseType
+  override type Or[That <: BoolType] = TrueType
+}
+sealed trait FalseType extends BoolType {
+  override type Not = TrueType
+  override type Or[That <: BoolType] = That
+}
+----
+
+And the test code:
+
+[source,scala]
+----
+object BoolTypeSpecs {
+  // ...
+  implicitly[TrueType#Or[TrueType] =:= TrueType]
+  implicitly[TrueType#Or[FalseType] =:= TrueType]
+  implicitly[FalseType#Or[TrueType] =:= TrueType]
+  implicitly[FalseType#Or[FalseType] =:= FalseType]
+}
+----
+
+The analogy from the value world continues here in that we now have square brackets in `[That <: BoolType]` to indicate a parameter rather than the parenthetical `(that:BoolVal)` syntax.
+
+Now let's wrap up the Boolean example with definitions for `And` and `Imp`.
+Recall earlier we needn't define these in the child entities, as they can be defined completely in terms of `Not` and `Or`
+
+[source,scala]
+----
+sealed trait BoolType {
+  type Not <: BoolType
+  type Or[That <: BoolType] <: BoolType
+  type And[That <: BoolType] = this.type#Not#Or[That#Not]#Not
+  type Imp[That <: BoolType] = this.type#Not#Or[That]
+}
+----
+
+Perhaps for some of you this was a painfully simple example, but it's important that we do not get distracted by a complex problem so we can focus on values vs. types.
+When modelling Booleans, we can easily see that values and types are essentially the same, sans some syntax.
+If you are knowledgeable in mathematical terminology, you would likely recognize these two as being _isomorphic_ to one another.
+

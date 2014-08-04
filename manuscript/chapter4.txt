@@ -1,0 +1,262 @@
+# Chapter 4
+
+Fortunately, we can utilize our `IntType` to make some interesting type-safe operations on lists.  
+The list we will define only contains integers, for the sake of simplicity.  
+It will be a singly-linked-list with the first element being the head.  
+Much like the standard Scala `List`, we will also need a `Nil` object to terminate our lists.  
+We'll also stick with the Scala standard library's use of the cons (`::`) operator to construct our list.  
+Let's take a look.
+
+[source,scala]
+----
+sealed trait IntList { 
+  def ::(head:Int):IntList = IntListImpl(head, this)
+}
+ 
+case object IntNil extends IntList 
+ 
+case class IntListImpl
+  (head:Int, tail:IntList) extends IntList 
+----
+
+Now we can define some of our lists. 
+Here are a few illustrative examples.
+
+[source,scala]
+----
+val empty = IntNil
+val size1 = 1 :: IntNil
+val size3 = 1 :: 2 :: size1  
+----
+
+Before forging ahead with those comfortable in Scala, I should point out to other readers a peculiarity which occurred in the previous examples.
+In Scala, we have an interesting language feature which reverses the _fixity_ or the _association_ of the operator.
+That is, any operator ending in `:` is actually a method called on the argument to the _right_ rather than the usual call on the _left_ object.
+Hence, these lines are first invoking `::` on the `IntNil` object, passing the integer on the left.
+
+As with all of our previous examples, we will now define an operator.  
+This time we shall implement vector addition.  
+If you recall from your undergrad days in linear algebra, two vectors can be added if and only they are the same length.  
+Otherwise addition is simply not defined.  
+In the programming world, that implies an error should be raised.  
+However, let's first take a crack at it without the errors.
+
+[source,scala]
+----
+sealed trait IntList { 
+  def ::(head:Int):IntList = IntListImpl(head, this)
+  def +(other:IntList):IntList
+}
+ 
+case object IntNil extends IntList { 
+  override def +(other:IntList) = this
+}
+ 
+case class IntListImpl(head:Int, tail:IntList) extends IntList {
+  override def +(other:IntList) = other match {
+    case IntListImpl(h, t) => (head + h) :: (tail + t)
+  }
+}
+----
+
+Let's take a look at some ScalaTest example code for our new operator.
+
+[source,scala]
+----
+val sum0 = IntNil + IntNil
+sum0 should equal (IntNil)
+ 
+val sum1 = (1 :: IntNil) + (2 :: IntNil)
+sum1 should equal (3 :: IntNil)
+ 
+val sum2 = (1 :: 2 :: IntNil) + (3 :: 4 :: IntNil)
+sum2 should equal (4 :: 6 :: IntNil)
+----
+
+Now we should validate our argument's size before attempting to perform addition, since addition with a list of a different size is not defined.  
+To facilitate this validation, we need to first add a `size` property.  
+Then we can use `require` from Scala's `PreDef` which works similarly to `assert` from Java.
+
+[source,scala]
+----
+sealed trait IntList { 
+  def ::(head:Int):IntList = IntListImpl(head, this)
+  def +(other:IntList):IntList
+  def size:Int 
+}
+ 
+case object IntNil extends IntList {
+  override def +(other:IntList) = {
+    require(other == IntNil)
+    this
+  }
+  override val size = 0
+}
+ 
+case class IntListImpl(head:Int, tail:IntList) extends IntList {
+  override def +(other:IntList) = {
+    require(other.size == size)
+    other match {
+      case IntListImpl(h, t) => (head + h) :: (tail + t)
+    }
+  }
+  override val size = 1 + tail.size 
+}
+----
+
+One thing worth noting is that if you compile this code, you will get this warning:
+
+[source,text]
+----
+[warn] IntList.scala:20: match may not be exhaustive.
+[warn] It would fail on the following input: IntNil
+[warn]     other match {
+[warn]     ^
+----
+
+You can alleviate this warning by adding a case for `IntNil`, but I really don’t want to because I know that case will never happen. 
+We know that our `require` will always eliminate the possibility of an empty list, yet the compiler is unaware. 
+This is because we are enforcing this constraint at run time, unbeknownst to the compiler. 
+Spoiler: _This won’t happen when we use types later._
+
+So this all works, right?  
+We can certainly use this implementation to write some very useful software that will satisfy customers and make us all rich.  
+Yet we can still make it better.  
+Note that like all good data structures in software, our `IntList` is immutable.  
+You cannot add elements to a list.  
+Cons always yields a new list. 
+Hence the size/length is always known at compile time. 
+Theoretically we can encode this knowledge via types into our integer list and validate our `+` operation at compile time.  
+It turns out this theory is demonstrable in Scala using our previously-implemented `IntType`.  
+Let's start over on our `IntList` using the `IntType` to define the length of the list.
+
+[source,scala]
+----
+sealed trait IntList[Size <: IntType] { 
+  def ::(head:Int):IntList[IntType1Plus[Size]] = ???
+}
+----
+
+Notice that now our list type takes as a type parameter its size from our `IntType`.  
+Our cons operator returns a list typed with size of 1 plus our size.  
+Now let's define our `IntNil`, whose size is zero or `IntType0`.
+
+[source,scala]
+----
+case object IntNil extends IntList[IntType0] 
+----
+
+And our case class.
+
+[source,scala]
+----
+case class IntListImpl
+  [SizeTail <: IntType] // <1>
+  (head:Int, tail:IntList[SizeTail]) // <2>
+  extends IntList[IntType1Plus[SizeTail]] // <3>
+----
+<1> Because the `tail` argument has a type associated with it, namely `SizeTail`, we have to pass that type as a parameter to the class.
+<2> Our class is a function of a head element and a tail `IntList`, hence this line is much like the argument definition given previously in `IntListImpl`. 
+<3> Finally, our class extends `IntList` as you should expect.  
+Here we give the size type as `IntType1Plus[SizeTail]` because our new list is precisely one element larger than the previous.  
+
+Now we can go back to our `IntList` trait and implement the cons operator.
+
+[source,scala]
+----
+sealed trait IntList[Size <: IntType] { 
+  def ::(head:Int):IntList[IntType1Plus[Size]] = IntListImpl(head, this)
+}
+----
+
+Our usage looks the same as before, where `1::IntNil` constructs the list containing only the element `1`, for instance. 
+Now let's begin adding our `+` to each of our constructs.  
+The declaration in `IntList` is very straight forward.  
+The signature just takes a list with our size and returns another list with the same size.
+
+[source,scala]
+----
+sealed trait IntList[Size <: IntType] { 
+  def ::(head:Int):IntList[IntType1Plus[Size]] = IntListImpl(head, this)
+  def +(other:IntList[Size]):IntList[Size]
+}
+----
+
+Thanks to the `Size` type on our trait, we are able to constrain the `other` argument and the returned `IntList` to conform to the same size as our list. 
+Because the size must be the same and our `IntNil` is an object (i.e. a singleton), the implementation of `+` on `IntNil` is trivial.
+
+[source,scala]
+----
+case object IntNil extends IntList[IntType0] { 
+  override def +(other:IntList[IntType0]) = this
+}
+----
+
+Now the implementation of `+` on the case class `IntListImpl` is where things get quite interesting. 
+Take a look below along with the line-by-line breakdown.
+
+[source,scala]
+----
+case class IntListImpl
+  [SizeTail <: IntType]
+  (head:Int, tail:IntList[SizeTail]) 
+  extends IntList[IntType1Plus[SizeTail]] { 
+  private type Size = IntType1Plus[SizeTail] // <1>
+  override def +(other:IntList[Size]) = other match { // <2>
+    case IntListImpl(h, t) => (head + h) :: (tail + t) // <3>
+  }
+}
+----
+<1> First I added the type definition on this line for clarity.  
+Now we can refer to our size as simply `Size` rather than our size we calculated as `IntType1Plus[SizeTail]`. 
+<2> Just as with the trait definition of `+`, we see that our argument has its size type constrained to equal our own. 
+<3> The function body is simply a pattern match on our argument as before to let us extract the head and tail of the argument. 
+Given the head and tail of our argument, the sum is simply the sum of the heads constructed with the sum of the tails.
+
+
+Remember that compiler warning about a non-exhaustive match when we were validating the lengths at run time?  
+Even though we are not including the `IntNil` as a potential match, we don't get that any more.  
+The compiler is able to infer that this is not a possibility because `IntNil` extends `IntList[IntType0]` which is not equivalent to `IntList[IntType1Plus[S]}` for any type `S`.
+As a matter of fact, we _cannot_ include `IntNil` as a case.  
+Try it, and you'll get the following compiler error.
+
+[source,text]
+----
+[error] IntList.scala:17: pattern type is incompatible with expected type;
+[error]  found   : com.joescii.typed.IntNil.type
+[error]  required: com.joescii.typed.IntList[IntListImpl.this.Size]
+[error] Note: if you intended to match against the class, try `case _: <none>`
+[error]     case IntNil => this
+[error]        
+----
+
+Now that's quite nice.  
+If we take a look at some usages of our type-enhanced `IntList`, we see that the legal cases look the same.
+Hence, we've not levied any extra burden on the consumer of our library.
+
+[source,scala]
+----
+val sum0 = IntNil + IntNil
+sum0 should equal (IntNil)
+ 
+val sum1 = (1 :: IntNil) + (2 :: IntNil)
+sum1 should equal (3 :: IntNil)
+ 
+val sum2 = (1 :: 2 :: IntNil) + (3 :: 4 :: IntNil)
+sum2 should equal (4 :: 6 :: IntNil)
+----
+
+As we've seen previously, the most interesting thing in type programming isn't what can be compiled, but what _cannot_ be compiled. 
+Once again, I used `illTyped` from shapeless to make repeatable negative compilation test cases.
+
+[source,scala]
+----
+illTyped("(1 :: IntNil) + IntNil")
+illTyped("(1 :: 2 :: IntNil) + IntNil")
+illTyped("(1 :: 2 :: IntNil) + (3 :: IntNil)")
+illTyped("IntNil + (3 :: IntNil)")
+----
+
+Using essentially the same number of lines of code, we can now check our lengths at compile time rather than run time.  
+Not a bad cost if you ask me.  
+
