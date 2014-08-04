@@ -1,36 +1,33 @@
-# Chapter 3
+# Chapter 3: Peano Numbers as Types
 
+## Peano Numbers as Values
 
-== Peano Numbers as Types
-
+## Peano Numbers as Types
 We don't have to limit ourselves to merely two types, as we did with our `TrueType` and `FalseType`.
 In fact, we can define an arbitrarily-large number of types.
 We will do so by defining the non-negative integers using the http://en.wikipedia.org/wiki/Peano_axioms/[Peano axioms].
 That is, we will define a base-case zero, and define the positive integers recursively.
 Let's first examine the value-level definitions.
 
-[source,scala]
-----
+```scala
 sealed trait IntVal
 case object IntVal0 extends IntVal
 case class IntVal1Plus(prev:IntVal) extends IntVal
-----
+```
 
 Here we have our base trait, an object for zero, and a recursive definition for every successive value.
 Hence we can define more values like this.
 
-[source,scala]
-----
+```scala
 val intVal1 = IntVal1Plus(IntVal0)
 val intVal2 = IntVal1Plus(intVal1)
 val intVal3 = IntVal1Plus(intVal2)
-----
+```
 
 As before, we'll define an operator to make this an interesting problem.
 Let's define `plus`.
 
-[source,scala]
-----
+```scala
 sealed trait IntVal {
   def plus(that:IntVal):IntVal
 }
@@ -40,12 +37,11 @@ case object IntVal0 extends IntVal {
 case class IntVal1Plus(prev:IntVal) extends IntVal {
   override def plus(that:IntVal) = IntVal1Plus(prev plus that)
 }
-----
+```
 
 Rather than bore you with more elementary value-level programming, let's jump straight to the parallel universe of type-level programming.
 
-[source,scala]
-----
+```scala
 sealed trait IntType {
   type plus[That <: IntType] <: IntType
 }
@@ -55,7 +51,7 @@ sealed trait IntType0 extends IntType {
 sealed trait IntType1Plus[Prev <: IntType] extends IntType {
   override type plus[That <: IntType] = IntType1Plus[Prev#plus[That]]
 }
-----
+```
 
 Now we have an example of a recursive type.
 The `IntType1Plus` type takes as an argument another `IntType`, which we call a _type constructor_.
@@ -63,8 +59,7 @@ Given an `IntType` named `Prev`, it constructs a new type named `IntType1Plus[Pr
 Let's take a look at the test code for these types.
 I'll first define a few types for convenience, then use our handy `implicitly` and `illTyped`.
 
-[source,scala]
-----
+```scala
 object IntTypeSpecs {
   type IntType1 = IntType1Plus[IntType0]
   type IntType2 = IntType1Plus[IntType1]
@@ -79,7 +74,7 @@ object IntTypeSpecs {
   illTyped("implicitly[IntType0#plus[IntType1] =:= IntType0]")
   illTyped("implicitly[IntType2#plus[IntType3] =:= IntType1]")
 }
-----
+```
 
 For exercise, I invite you to explore other operators you could define for `IntType`.
 Multiplication is certainly a possibility here, as well as mingling back with our `BoolType` to implement comparison operators.

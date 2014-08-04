@@ -1,12 +1,12 @@
-# Chapter 1
+# Chapter 1: What is type-level programming?
 
+## Value-Level Programming
 Before we dive into type-level programming, we need to first establish an understanding of its complement known as value-level programming.
 Let's kick things off with a simple declaration of a value in Scala.
 
-[source,scala]
-----
+```scala
 val num = 42
-----
+```
 
 I suspect most of my audience is aware of the heavy influence of functional programming on Scala and may already know that this means I've assigned the value `42` to the name `num`, and it is _immutable_.
 Many folks will quickly point out that this value could also be declared as a `var`, allowing us to reassign the value of `num` at a later time.
@@ -19,29 +19,26 @@ That is, the expression to the right of the equals sign is computed (trivially t
 What you may not know is `val` and `var` are certainly not the only two declarations which can be made in Scala to bind an expression to a name.
 If you have already spent some time in Scala, you are aware of how you can define a procedure/function/method.
 
-[source,scala]
-----
+```scala
 def sayHello() = println("Hello World!")
-----
+```
 
 Now one cool thing here is a `def` does not require the name to be followed by a parenthetically-wrapped argument list.
 It is valid to drop it altogether when there are no arguments.
 For instance, we can have a one-liner which grabs a new `Date` object each time invoked.
 
-[source,scala]
-----
+```scala
 def timestamp = new java.util.Date()
-----
+```
 
 Before I move along, if you are from a Java background and little-to-no Scala, then there are a few things I should point out.
 Firstly, the last line of a function body is _implicitly_ returned, hence this function returns the new `Date` object.
 Secondly, Scala's type inference allows us to omit the explicit return type.
 Hence a more-expanded version of this function which you may better understand is as follows:
 
-[source,scala]
-----
+```scala
 def timestamp:java.util.Date = return new java.util.Date()
-----
+```
 
 There is a fourth declaration of values you can make which is of interest for this exposé: `lazy val`.
 This is much like `val` in that the expression computed for the value is immutable, but that expression is not calculated until the first time it is asked for.
@@ -55,13 +52,19 @@ The last is evaluated later after _every_ invocation.
 These three are differentiated by _when_ the declaration's expression on the right is evaluated.
 Let's take a quick look at all of these in action:
 
-[source,scala]
-----
+```scala
 val iter = (1 to 4).iterator
 
-def def_i = iter.next() // <1>
-lazy val lazy_i = iter.next() // <2>
-val val_i = iter.next() // <3>
+// re-evaluates the expression on every invocation,
+// returning a new value from `iter.next()`.
+def def_i = iter.next() 
+
+// evaluates the expression the first time we reference it,
+// but retains that value for the remainder of the scope's lifetime.
+lazy val lazy_i = iter.next() 
+
+// evaluates when it is declared, assigning itself to the first value in our sequence
+val val_i = iter.next() 
 
 println(def_i)  // Prints 2
 println(lazy_i) // Prints 3
@@ -69,25 +72,21 @@ println(val_i)  // Prints 1
 println(def_i)  // Prints 4
 println(lazy_i) // Prints 3
 println(val_i)  // Prints 1
-----
-<1> `def_i` re-evaluates the expression on every invocation, returning a new value from `iter.next()`.
-<2> `lazy_i` evaluates the expression the first time we reference `lazy_i`, but retains that value for the remainder of the scope's lifetime.
-<3> `val_i` evaluates when it is declared, assigning itself to the first value in our sequence
+```
 
 Lastly, note that all of these values are calculated at runtime to produce values.
 That is why this programming is often referred to as _value-level programming_.
 This is what we are all familiar with, as I'm certain everyone reading this has written a program which calculates values at runtime.
 
-== Type-Level Programming
+## Type-Level Programming
 
 Scala has a nice trick that is a bit of a throw-back to C.
 Whenever you have a type that you don't want to repeat throughout your code base, you use a `typedef`.
 Similarly in Scala, you can declare a `type`
 
-[source,scala]
-----
+```scala
 type MyMap = Map[Int, String]
-----
+```
 
 Then within the scope of the type declaration of `MyMap`, we can use this type to avoid typing the longer, less attractive `Map[Int, String]`.
 Java developers, rejoice!

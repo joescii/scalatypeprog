@@ -1,21 +1,20 @@
-# Chapter 5
+# Chapter 5: Constraining Values with Equivalent Types
 
 We aren't done, though.  
 Let's consider another operator on our list.  
 I'll first declare it, and we'll break it down line-by-line to see if we can deduce its meaning.
 
-[source,scala]
-----
+```scala
 sealed trait IntList[Size <: IntType] { 
-  def ++[ThatSize <: IntType] // <1>
-    (that:IntList[ThatSize]): // <2>
-    IntList[Size#plus[ThatSize]] // <3>
+  def ++[ThatSize <: IntType] 
+    (that:IntList[ThatSize]): 
+    IntList[Size#plus[ThatSize]] 
 }
-----
-<1> First we see I have named the operator `++`.  
+```
+Line 2: First we see I have named the operator `++`.  
 Secondly, this operator takes a type parameter of type `IntType` which we are naming `ThatSize`.  
-<2> Then on the next line we have as a value parameter a value of type `IntList` with its size typed as the type parameter, `ThatSize`.  
-<3> Finally, we see that it will return another `IntList` with size `Size#plus[ThatSize]`.  
+Line 3: Then on the next line we have as a value parameter a value of type `IntList` with its size typed as the type parameter, `ThatSize`.  
+Line 4: Finally, we see that it will return another `IntList` with size `Size#plus[ThatSize]`.  
 
 In short, `++` takes a list and returns a list that is the size of both added together.  
 
@@ -29,12 +28,11 @@ In this sense, types are like computationally-verifiable documentation.
 
 Let's carry on and implement concatenation for our `IntNil` base case, which is as trivial as always.
 
-[source,scala]
-----
+```scala
 case object IntNil extends IntList[Size0] {
   override def ++[ThatSize <: IntType](that:IntList[ThatSize]) = that
 }
-----
+```
 
 It should not take much to be convinced that this will pass the type checker.  
 That is to say, `IntType0#plus[ThatSize]` is equivalent to `ThatSize`, hence the return type needs to be equivalent to `IntList[ThatSize]`.  
@@ -42,8 +40,7 @@ Since we are returning `that` we’re good to go.
 
 Now we'll use another dab of recursion as we did with our vector addition to implement the concatenation operator for our general case `IntListImpl`.
 
-[source,scala]
-----
+```scala
 case class IntListImpl[TailSize <: IntType]
     (head:Int, tail:IntList[TailSize]) 
     extends IntList[IntType1Plus[TailSize]] { 
@@ -53,7 +50,7 @@ case class IntListImpl[TailSize <: IntType]
   override def ++[ThatSize <: IntType](that:IntList[ThatSize]) =
     IntListImpl(head, tail ++ that)
 }
-----
+```
 
 The first thing that is interesting here is that our recursive expression does not yield the type `Size#plus[ThatSize]`.  
 Instead, it is `IntType1Plus[TailSize#plus[ThatSize]]`.  
@@ -66,20 +63,18 @@ It is the writer of libraries who must suffer the pain of the ugly code, while t
 Given the compile checks this gives us, I think it is well worth the ugliness.  
 Take a look at some test case examples, and I think you'll agree there is nothing ugly about the resulting code.
 
-[source,scala]
-----
+```scala
 (IntNil ++ IntNil) should equal (IntNil)
 ((1 :: IntNil) ++ IntNil) should equal (1 :: IntNil)
 ((1 :: IntNil) ++ (2 :: IntNil)) should equal (1 :: 2 :: IntNil)
 ((1 :: IntNil) ++ (2 :: 3 :: IntNil)) should equal (1 :: 2 :: 3 :: IntNil)
-----
+```
 
 Combine that with our addition operator, and we get some really nice type checks of our code.
 
-[source,scala]
-----
+```scala
 (((1 :: 2 :: IntNil) ++ (3 :: IntNil)) + (4 :: 5 :: 6 :: IntNil)) should equal (5 :: 7 :: 9 :: IntNil)
-----
+```
 
 Recall from earlier that the `+` operator disallowed two lists of differing sizes.  Notice that this code compiles because the types are equivalent as you would logically deduce.  Thankfully, the compiler is likewise able to deduce this equivalence and gives us the type safety we wanted.
 
